@@ -8,17 +8,17 @@ state_lock = threading.Lock()
 state = {
     "ambient_temperature": 25.0,
     "load_percent": 50.0,
-    "fans_on": True,
+    "fans_on": False,
     "current_temperature": 25.0,
     "control": True,
 }
 # Store last 60 seconds of readings (one per 5s = 12 points max)
-history = deque(maxlen=12)
+history = deque(maxlen=20)
 
 # --- Thread 1: Temperature simulation ---
 def temperature_thread():
     with state_lock:
-        state["current_temperature"] = state["ambient_temperature"]
+        state["current_temperature"] = state["ambient_temperature"] + 0.7 * state["load_percent"]
 
     while True:
         with state_lock:
@@ -36,7 +36,7 @@ def temperature_thread():
             state["current_temperature"] = current_temp
             history.append({"t": round(time.time()), "v": round(current_temp, 2)})
 
-        time.sleep(5)
+        time.sleep(3)
 
 # --- Thread 2: Flask API ---
 app = Flask(__name__)
@@ -96,11 +96,11 @@ def dashboard():
     <form id="frm">
         <div class="field">
             <label>Ambient Temperature (°C)</label>
-            <input type="number" id="ambient" step="0.1" placeholder="e.g. 25">
+            <input type="number" id="ambient" step="0.1">
         </div>
         <div class="field">
             <label>Load (%)</label>
-            <input type="number" id="load" step="1" min="0" max="100" placeholder="e.g. 50">
+            <input type="number" id="load" step="1" min="0" max="100">
         </div>
         <div class="field">
             <label>Fans</label>
@@ -121,10 +121,11 @@ def dashboard():
             document.getElementById('cv-ambient').innerText = d.ambient_temperature + ' °C';
             document.getElementById('cv-load').innerText = d.load_percent + ' %';
             document.getElementById('cv-fans').innerText = d.fans_on ? 'ON' : 'OFF';
+            document.getElementById(d.fans_on ? 'fans_on' : 'fans_off').checked = true;
         });
     }
     loadCurrent();
-    setInterval(loadCurrent, 5000);
+    setInterval(loadCurrent, 3000);
 
     document.getElementById('frm').addEventListener('submit', function(e) {
         e.preventDefault();
@@ -181,7 +182,7 @@ def output():
 </head>
 <body>
 <div class="card">
-    <h2>Transformer Temperature</h2>
+    <h2>Transformer Oil Temperature</h2>
     <div class="temp-now" id="now">— <span>°C</span></div>
     <canvas id="chart" height="180"></canvas>
     <a href="/">Go to Input UI</a>
@@ -230,7 +231,7 @@ def output():
         });
     }
     update();
-    setInterval(update, 5000);
+    setInterval(update, 3000);
 </script>
 </body>
 </html>
