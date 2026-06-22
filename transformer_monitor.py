@@ -29,7 +29,7 @@ def temperature_thread():
             k = 1 if state["fans_on"] else 0
             current = state["current_temperature"]
 
-        new_temp = ambient + load * (0.5 - 0.2 * k)
+        new_temp = ambient + load * (0.7 - 0.2 * k)
         current_temp = (new_temp - current) / 10 + current
 
         with state_lock:
