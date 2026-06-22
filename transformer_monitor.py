@@ -1,5 +1,6 @@
 import threading
 import time
+from collections import deque
 from flask import Flask, jsonify, request
 
 # --- Shared state ---
@@ -11,6 +12,8 @@ state = {
     "current_temperature": 25.0,
     "control": True,
 }
+# Store last 60 seconds of readings (one per 5s = 12 points max)
+history = deque(maxlen=12)
 
 # --- Thread 1: Temperature simulation ---
 def temperature_thread():
@@ -31,6 +34,7 @@ def temperature_thread():
 
         with state_lock:
             state["current_temperature"] = current_temp
+            history.append({"t": round(time.time()), "v": round(current_temp, 2)})
 
         time.sleep(5)
 
@@ -142,6 +146,91 @@ def dashboard():
             loadCurrent();
         });
     });
+</script>
+</body>
+</html>
+"""
+
+@app.route("/history", methods=["GET"])
+def get_history():
+    with state_lock:
+        return jsonify(list(history))
+
+@app.route("/output", methods=["GET"])
+def output():
+    return """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Output UI</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; background: #f0f2f5;
+               display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .card { background: white; border-radius: 12px; padding: 36px 40px;
+                width: 560px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        h2 { font-size: 20px; color: #222; margin-bottom: 8px; text-align: center; }
+        .temp-now { text-align: center; font-size: 48px; font-weight: bold;
+                    color: #e74c3c; margin-bottom: 24px; }
+        .temp-now span { font-size: 20px; color: #999; font-weight: normal; }
+        a { display: block; text-align: center; margin-top: 20px;
+            color: #4a90e2; text-decoration: none; font-size: 14px; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h2>Transformer Temperature</h2>
+    <div class="temp-now" id="now">— <span>°C</span></div>
+    <canvas id="chart" height="180"></canvas>
+    <a href="/">Go to Input UI</a>
+</div>
+<script>
+    var ctx = document.getElementById('chart').getContext('2d');
+    var chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Temperature (°C)',
+                data: [],
+                borderColor: '#e74c3c',
+                backgroundColor: 'rgba(231,76,60,0.1)',
+                borderWidth: 2,
+                pointRadius: 4,
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: {
+            animation: false,
+            scales: {
+                x: { title: { display: true, text: 'Time' } },
+                y: { title: { display: true, text: '°C' } }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+
+    function update() {
+        fetch('/history').then(function(r) { return r.json(); }).then(function(data) {
+            chart.data.labels = data.map(function(d) {
+                var dt = new Date(d.t * 1000);
+                return dt.getHours().toString().padStart(2,'0') + ':' +
+                       dt.getMinutes().toString().padStart(2,'0') + ':' +
+                       dt.getSeconds().toString().padStart(2,'0');
+            });
+            chart.data.datasets[0].data = data.map(function(d) { return d.v; });
+            chart.update();
+            if (data.length > 0) {
+                document.getElementById('now').innerHTML =
+                    data[data.length-1].v + ' <span>°C</span>';
+            }
+        });
+    }
+    update();
+    setInterval(update, 5000);
 </script>
 </body>
 </html>
