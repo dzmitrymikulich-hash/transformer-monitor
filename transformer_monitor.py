@@ -137,7 +137,7 @@ def dashboard():
                 </div>
                 <div class="field">
                     <label>Datacenter Load (%)</label>
-                    <input type="number" id="load" step="1" min="0" max="100">
+                    <input type="number" id="load" step="1" min="0" max="120">
                 </div>
                 <button type="submit">Apply</button>
                 <div class="msg" id="msg-input">Settings applied!</div>
