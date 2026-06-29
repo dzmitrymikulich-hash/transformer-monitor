@@ -7,10 +7,10 @@ from flask import Flask, jsonify, request
 state_lock = threading.Lock()
 state = {
     "ambient_temperature": 25.0,
-    "load_percent": 50.0,
+    "load_percent": 30.0,
     "fans_on": False,
     "fan_mode": "auto",        # "auto" or "manual"
-    "fan_on_threshold": 90.0,  # °C — turn fans ON above this
+    "fan_on_threshold": 85.0,  # °C — turn fans ON above this
     "fan_off_threshold": 50.0, # °C — turn fans OFF below this
     "current_temperature": 25.0,
     "control": True,
@@ -108,8 +108,14 @@ def dashboard():
         .msg { text-align: center; margin-top: 12px; font-size: 14px;
                color: #2ecc71; display: none; }
         .hidden { display: none; }
+        .fan-wrap { display: flex; justify-content: center; align-items: center;
+                    padding: 16px 0 8px; }
+        .fan-svg { transition: opacity 0.4s; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .fan-spinning { animation: spin 0.6s linear infinite; transform-origin: 50px 50px; }
+        .fan-off { opacity: 0.25; }
         .temp-now { text-align: center; font-size: 52px; font-weight: bold;
-                    color: #e74c3c; margin-bottom: 20px; }
+                    color: #2ecc71; margin-bottom: 20px; transition: color 0.5s; }
         .temp-now span { font-size: 22px; color: #999; font-weight: normal; }
     </style>
 </head>
@@ -147,6 +153,22 @@ def dashboard():
                 <div class="current-row"><span>Fans</span><span id="cv-fans">—</span></div>
                 <div class="current-row"><span>Fan ON above</span><span id="cv-fan-on-thresh">—</span></div>
                 <div class="current-row"><span>Fan OFF below</span><span id="cv-fan-off-thresh">—</span></div>
+            </div>
+            <div class="fan-wrap">
+                <svg id="fan-svg" class="fan-svg fan-off" width="100" height="100" viewBox="0 0 100 100">
+                    <g id="fan-blades">
+                        <!-- Blade 1 -->
+                        <path d="M50,50 C50,50 45,30 50,15 C55,5 65,8 63,20 C61,30 50,50 50,50Z" fill="#4a90e2" opacity="0.9"/>
+                        <!-- Blade 2 -->
+                        <path d="M50,50 C50,50 70,45 85,50 C95,55 92,65 80,63 C70,61 50,50 50,50Z" fill="#4a90e2" opacity="0.9"/>
+                        <!-- Blade 3 -->
+                        <path d="M50,50 C50,50 55,70 50,85 C45,95 35,92 37,80 C39,70 50,50 50,50Z" fill="#4a90e2" opacity="0.9"/>
+                        <!-- Blade 4 -->
+                        <path d="M50,50 C50,50 30,55 15,50 C5,45 8,35 20,37 C30,39 50,50 50,50Z" fill="#4a90e2" opacity="0.9"/>
+                    </g>
+                    <circle cx="50" cy="50" r="7" fill="#2c3e50"/>
+                    <circle cx="50" cy="50" r="3" fill="#ecf0f1"/>
+                </svg>
             </div>
             <form id="frm-fans">
                 <div class="field">
@@ -239,8 +261,11 @@ def dashboard():
             chart.data.datasets[0].data = data.map(function(d) { return d.v; });
             chart.update();
             if (data.length > 0) {
-                document.getElementById('now').innerHTML =
-                    data[data.length-1].v + ' <span>°C</span>';
+                var temp = data[data.length-1].v;
+                var color = temp <= 50 ? '#2ecc71' : temp <= 80 ? '#f39c12' : '#e74c3c';
+                var el = document.getElementById('now');
+                el.innerHTML = temp + ' <span>°C</span>';
+                el.style.color = color;
             }
         });
     }
@@ -273,6 +298,15 @@ def dashboard():
             document.getElementById('cv-fans').innerText = d.fans_on ? 'ON' : 'OFF';
             document.getElementById('cv-fan-on-thresh').innerText = d.fan_on_threshold + ' °C';
             document.getElementById('cv-fan-off-thresh').innerText = d.fan_off_threshold + ' °C';
+            var blades = document.getElementById('fan-blades');
+            var fanSvg = document.getElementById('fan-svg');
+            if (d.fans_on) {
+                blades.classList.add('fan-spinning');
+                fanSvg.classList.remove('fan-off');
+            } else {
+                blades.classList.remove('fan-spinning');
+                fanSvg.classList.add('fan-off');
+            }
             if (!modeUserEdited) {
                 document.getElementById(d.fan_mode === 'auto' ? 'fan_mode_auto' : 'fan_mode_manual').checked = true;
                 updateModeUI();
@@ -415,10 +449,10 @@ def update_settings():
 
 DEFAULTS = {
     "ambient_temperature": 25.0,
-    "load_percent": 50.0,
+    "load_percent": 30.0,
     "fans_on": False,
     "fan_mode": "auto",
-    "fan_on_threshold": 90.0,
+    "fan_on_threshold": 85.0,
     "fan_off_threshold": 50.0,
 }
 
@@ -429,7 +463,8 @@ def reset():
         state["current_temperature"] = DEFAULTS["ambient_temperature"] + 0.7 * DEFAULTS["load_percent"]
     return jsonify({"status": "ok"})
 
+t = threading.Thread(target=temperature_thread, daemon=True)
+t.start()
+
 if __name__ == "__main__":
-    t = threading.Thread(target=temperature_thread, daemon=True)
-    t.start()
     app.run(host="0.0.0.0", port=5000)
